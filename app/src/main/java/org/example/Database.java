@@ -1,7 +1,5 @@
 package org.example;
 
-import javax.management.ObjectName;
-import javax.xml.crypto.Data;
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -9,8 +7,32 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.Objects;
 
+/**
+ * Database manager for tracking file upload history.
+ * 
+ * <p>This class manages a SQLite database that stores information about files
+ * that have been uploaded to S3, including their checksums to detect changes.</p>
+ * 
+ * <p>The database schema includes:</p>
+ * <ul>
+ *   <li>name: File path (PRIMARY KEY)</li>
+ *   <li>tier: Storage tier (currently unused)</li>
+ *   <li>uploaded: Boolean flag indicating upload status</li>
+ *   <li>md5_checksum: MD5 hash of the file content</li>
+ * </ul>
+ * 
+ * @author SecureStash Team
+ * @version 1.0
+ */
 public class Database {
+    /** JDBC URL for the SQLite database */
     String dburl = "";
+    
+    /**
+     * Constructs a new Database instance and creates the database file if needed.
+     * 
+     * @param base_url the base directory where history.db will be stored
+     */
     Database(String base_url){
         this.dburl = "jdbc:sqlite:" + base_url + "/history.db";
 
@@ -20,6 +42,10 @@ public class Database {
         }
     }
 
+    /**
+     * Creates a new SQLite database file.
+     * This is called automatically by the constructor if the database doesn't exist.
+     */
     private void create_db() {
 
         try (var conn = DriverManager.getConnection(dburl)) {
@@ -33,6 +59,10 @@ public class Database {
         }
     }
 
+    /**
+     * Tests the database connection.
+     * This method establishes and immediately closes a connection to verify connectivity.
+     */
     public void connect(){
         Connection conn = null;
 
@@ -55,6 +85,12 @@ public class Database {
             }
         }
     }
+    
+    /**
+     * Creates the file details table if it doesn't exist.
+     * 
+     * @param baseurl the base URL (currently unused in the method)
+     */
     public void createTable(String baseurl){
         String[] a = baseurl.split("/");
         String name = a[a.length-1];
@@ -74,9 +110,17 @@ public class Database {
         }
 
     }
+    
+    /**
+     * Inserts a file record into the database.
+     * If the file already exists and is uploaded with matching checksum, no action is taken.
+     * 
+     * @param file the FileDetails object to insert
+     */
     public void insertFile(FileDetails file){
 
-        if (checkUpload(file)){
+        // If checkUpload returns false, the file is already uploaded and doesn't need insertion
+        if (!checkUpload(file)){
             return;
         }
 
@@ -98,6 +142,11 @@ public class Database {
 
     }
 
+    /**
+     * Retrieves all file records from the database.
+     * 
+     * @return ArrayList of DataBaseObject containing all file records
+     */
     public ArrayList<DataBaseObject> getAllFiles(){
 
         String sql = "select * from details";
@@ -122,6 +171,12 @@ public class Database {
         return arr;
     }
 
+    /**
+     * Marks a file as uploaded in the database.
+     * 
+     * @param file the FileDetails object to mark as uploaded
+     * @throws RuntimeException if there's an SQL error
+     */
     public void uploadFile(FileDetails file){
 
 
@@ -137,21 +192,29 @@ public class Database {
         }
     }
 
+    /**
+     * Checks if a file needs to be uploaded by comparing it against the database.
+     * 
+     * @param file The FileDetails object to check
+     * @return true if the file should be uploaded, false if it's already uploaded with matching checksum
+     * @throws RuntimeException if there's an error accessing the database or calculating checksum
+     */
     public boolean checkUpload(FileDetails file){
         String checkFile = "select * from details where name=?";
-//        ArrayList<DataBaseObject> arr = new ArrayList<DataBaseObject>();
 
         try (var conn = DriverManager.getConnection(dburl);
-             var pstmt = conn.prepareStatement(checkFile);
-        ) {
-            pstmt.setString(1,file.getFilePath());
-            ResultSet rs = pstmt.executeQuery(checkFile);
+             var pstmt = conn.prepareStatement(checkFile)) {
+            
+            pstmt.setString(1, file.getFilePath());
+            ResultSet rs = pstmt.executeQuery();
+            
             while(rs.next()){
                 String name = rs.getString("name");
                 boolean uploaded = rs.getBoolean("uploaded");
                 String md5_checksum = rs.getString("md5_checksum");
-                System.out.println(name + uploaded + md5_checksum);
-                if (Objects.equals(name, file.getFilePath()) && uploaded && Objects.equals(md5_checksum,file.getChecksum())){
+                System.out.println(name + " uploaded=" + uploaded + " checksum=" + md5_checksum);
+                
+                if (Objects.equals(name, file.getFilePath()) && uploaded && Objects.equals(md5_checksum, file.getChecksum())){
                     System.out.println("Not Uploading File since it's already uploaded");
                     return false;
                 }

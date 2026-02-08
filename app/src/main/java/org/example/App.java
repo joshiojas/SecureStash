@@ -9,15 +9,38 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.HashSet;
 
+/**
+ * Main application class for SecureStash - an AWS S3 backup utility.
+ * 
+ * <p>This application recursively scans a directory, tracks files in a SQLite database,
+ * and uploads them to AWS S3 storage. It maintains a history of uploaded files to avoid
+ * duplicate uploads based on MD5 checksums.</p>
+ * 
+ * <p>Usage: java org.example.App &lt;directory-path&gt;</p>
+ * 
+ * @author SecureStash Team
+ * @version 1.0
+ */
 public class App {
 
+    /** Set of file patterns to ignore during backup */
     HashSet<String> ignored = new HashSet<String>();
 
+    /**
+     * Constructs a new App instance and initializes the ignored files list.
+     */
     App(){
         ignored.add("history.db");
         ignored.add(".DS_Store");
     }
 
+    /**
+     * Recursively retrieves all files from a directory and its subdirectories.
+     * 
+     * @param dir the directory path to scan
+     * @param base_path the base path used for relative path calculation
+     * @return ArrayList of FileDetails objects representing all found files
+     */
     public ArrayList<FileDetails> getFiles(String dir, String base_path){
 
         ArrayList<FileDetails> files = new ArrayList<>();
@@ -41,9 +64,40 @@ public class App {
         return files;
     }
 
+    /**
+     * Main entry point for the SecureStash application.
+     * 
+     * <p>Validates command line arguments, scans the specified directory,
+     * initializes the database, and uploads files to AWS S3.</p>
+     * 
+     * @param args command line arguments; expects a directory path as the last argument
+     */
     public static void main(String[] args) {
 
+        // Validate command line arguments
+        if (args == null || args.length == 0) {
+            System.err.println("Error: No directory path provided");
+            System.err.println("Usage: java org.example.App <directory-path>");
+            System.exit(1);
+            return;
+        }
+
         String path = args[args.length - 1];
+        
+        // Validate that the path exists and is a directory
+        File pathFile = new File(path);
+        if (!pathFile.exists()) {
+            System.err.println("Error: Directory does not exist: " + path);
+            System.exit(1);
+            return;
+        }
+        
+        if (!pathFile.isDirectory()) {
+            System.err.println("Error: Path is not a directory: " + path);
+            System.exit(1);
+            return;
+        }
+        
         App app = new App();
         ArrayList<FileDetails> files = app.getFiles(path, path);
         files.forEach(System.out::println);
@@ -54,6 +108,15 @@ public class App {
         app.uploadFiles(files, db);
     }
 
+    /**
+     * Uploads a list of files to AWS S3 and updates the database tracking.
+     * 
+     * <p>For each file, checks if it needs to be uploaded (based on database records),
+     * performs the upload if needed, and updates the database to mark it as uploaded.</p>
+     * 
+     * @param files ArrayList of FileDetails to upload
+     * @param db Database instance for tracking upload history
+     */
     public void uploadFiles(ArrayList<FileDetails> files, Database db){
         System.out.println(files.size());
         AwsClient client = new AwsClient();
