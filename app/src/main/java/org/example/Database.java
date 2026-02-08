@@ -119,7 +119,8 @@ public class Database {
      */
     public void insertFile(FileDetails file){
 
-        if (checkUpload(file)){
+        // If checkUpload returns false, the file is already uploaded and doesn't need insertion
+        if (!checkUpload(file)){
             return;
         }
 
